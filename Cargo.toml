@@ -1,0 +1,15 @@
+[package]
+name = "eosim-demo"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+eosim = { git = "https://github.com/jasonasher/eosim.git", version = "0.1.0" }
+fxhash = "0.2.1"
+rand = "0.8.5"
+rand_distr = "0.4.3"
+rand_xoshiro = "0.6.0"
+serde = "1.0.201"
+serde_derive = "1.0.201"
