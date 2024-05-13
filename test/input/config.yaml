@@ -1,0 +1,5 @@
+population: 1000000
+r0: 1.5
+infectious_period: 4.0
+initial_infections: 100
+random_seed: 8675309

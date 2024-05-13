@@ -1,10 +1,8 @@
-use std::fs::File;
-
 use eosim::{
     context::{Component, Context},
     people::PersonId,
     person_properties::PersonPropertyContext,
-    reports::{get_file_report_handler, Report, ReportsContext},
+    reports::{Report, ReportsContext},
 };
 use serde_derive::Serialize;
 
@@ -36,13 +34,6 @@ pub fn handle_person_disease_status_change(
 
 impl Component for IncidenceReport {
     fn init(context: &mut Context) {
-        context.set_report_item_handler::<IncidenceReport>(get_file_report_handler::<
-            IncidenceReport,
-        >(
-            File::create("./test/output/incidence_report.csv")
-                .expect("Could not create output file."),
-        ));
-
         context
             .observe_person_property_changes::<DiseaseStatus>(handle_person_disease_status_change);
     }
