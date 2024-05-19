@@ -18,14 +18,14 @@ use super::{
 
 pub struct TransmissionManager {}
 
-impl Plugin for TransmissionManager {
-    type DataContainer = HashMap<PersonId, PlanId>;
-
-    fn get_data_container() -> Self::DataContainer {
-        HashMap::new()
+impl Component for TransmissionManager {
+    fn init(context: &mut Context) {
+        context
+            .observe_person_property_changes::<DiseaseStatus>(handle_person_disease_status_change);
     }
 }
 
+eosim::define_plugin!(TransmissionManagerPlugin, HashMap<PersonId, PlanId>, HashMap::new());
 pub struct TransmissionRandomId {}
 
 impl RandomId for TransmissionRandomId {
@@ -66,7 +66,7 @@ fn schedule_next_infectious_contact(context: &mut Context, person_id: PersonId) 
     });
     // Store plan id for future use (cancelling upon recovery)
     context
-        .get_data_container_mut::<TransmissionManager>()
+        .get_data_container_mut::<TransmissionManagerPlugin>()
         .insert(person_id, contact_plan);
 }
 
@@ -94,16 +94,9 @@ fn attempt_infection(context: &mut Context, source_person_id: PersonId) {
 
 fn cancel_next_infectious_contact(context: &mut Context, person_id: PersonId) {
     let contact_plan = context
-        .get_data_container_mut::<TransmissionManager>()
+        .get_data_container_mut::<TransmissionManagerPlugin>()
         .remove(&person_id);
     if let Some(contact_plan) = contact_plan {
         context.cancel_plan(contact_plan);
-    }
-}
-
-impl Component for TransmissionManager {
-    fn init(context: &mut Context) {
-        context
-            .observe_person_property_changes::<DiseaseStatus>(handle_person_disease_status_change);
     }
 }
