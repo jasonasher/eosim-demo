@@ -28,7 +28,7 @@ pub fn handle_person_disease_status_change(
     _: DiseaseStatus,
 ) {
     let disease_status = context.get_person_property_value::<DiseaseStatus>(person_id);
-    if disease_status == DiseaseStatus::I {
+    if matches!(disease_status, DiseaseStatus::I) {
         schedule_recovery(context, person_id)
     }
 }

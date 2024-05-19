@@ -85,7 +85,7 @@ fn attempt_infection(context: &mut Context, source_person_id: PersonId) {
         }
         drop(rng);
         let contact_disease_status = context.get_person_property_value::<DiseaseStatus>(contact_id);
-        if contact_disease_status == DiseaseStatus::S {
+        if matches!(contact_disease_status, DiseaseStatus::S) {
             context.set_person_property_value::<DiseaseStatus>(contact_id, DiseaseStatus::I)
         }
         schedule_next_infectious_contact(context, source_person_id)
