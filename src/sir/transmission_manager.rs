@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use eosim::{
-    context::{Component, Context, PlanId, Plugin},
+    context::{Component, Context, PlanId},
     global_properties::GlobalPropertyContext,
     people::PersonId,
     person_properties::PersonPropertyContext,

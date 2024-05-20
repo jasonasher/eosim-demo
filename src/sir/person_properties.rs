@@ -1,5 +1,3 @@
-use eosim::{data_containers::PropertyWithDefault, person_properties::PersonProperty};
-
 pub enum DiseaseStatus {
     S,
     I,

@@ -156,7 +156,7 @@ dependencies = [
 [[package]]
 name = "eosim"
 version = "0.1.0"
-source = "git+https://github.com/jasonasher/eosim.git#ea86a206cde560b846dfc8c98c2ddde5e35a914e"
+source = "git+https://github.com/jasonasher/eosim.git#00ac5880fc9ef9be38c742654f71feac33fbe61d"
 dependencies = [
  "csv",
  "derivative",
