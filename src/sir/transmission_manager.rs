@@ -78,7 +78,7 @@ fn attempt_infection(context: &mut Context, source_person_id: PersonId) {
         let mut contact_id;
         let mut rng = context.get_rng::<TransmissionRandomId>();
         loop {
-            contact_id = PersonId::new((*rng).gen_range(0..(population + 1)));
+            contact_id = PersonId::new((*rng).gen_range(0..population));
             if contact_id != source_person_id {
                 break;
             }
