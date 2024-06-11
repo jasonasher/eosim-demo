@@ -44,7 +44,7 @@ pub fn handle_person_disease_status_change(
     let disease_status = context.get_person_property_value::<DiseaseStatus>(person_id);
     match disease_status {
         DiseaseStatus::I => schedule_next_infectious_contact(context, person_id),
-        DiseaseStatus::R => cancel_next_infectious_contact(context, person_id),
+        DiseaseStatus::R | DiseaseStatus::D => cancel_next_infectious_contact(context, person_id),
         _ => {
             println!("{}", context.get_time())
         }

@@ -3,18 +3,22 @@
   infectious_period: 4.0
   initial_infections: 100
   random_seed: 8675309
+  death_rate: 0.17
 - population: 1000000
   r0: 1.5
   infectious_period: 4.0
   initial_infections: 100
   random_seed: 8675310
+  death_rate: 0.02
 - population: 1000000
   r0: 1.5
   infectious_period: 4.0
   initial_infections: 100
   random_seed: 8675311
+  death_rate: 0.31
 - population: 1000000
   r0: 1.5
   infectious_period: 4.0
   initial_infections: 100
   random_seed: 8675312
+  death_rate: 0.94
