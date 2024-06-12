@@ -8,4 +8,4 @@ summarized_incidence_report <- incidence_report %>%
     mutate(scenario = factor(scenario))
 
 ggplot(summarized_incidence_report) +
-    geom_line(aes(x=day, y=incidence, color=scenario))
+    geom_line(aes(x = day, y = incidence, color = scenario))
