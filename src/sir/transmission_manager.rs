@@ -5,11 +5,10 @@ use eosim::{
     global_properties::GlobalPropertyContext,
     people::PersonId,
     person_properties::PersonPropertyContext,
-    random::{RandomContext, RandomId},
+    random::RandomContext,
 };
 use rand::Rng;
 use rand_distr::{Distribution, Exp};
-use rand_xoshiro::Xoshiro256PlusPlus;
 
 use super::{
     global_properties::{InfectiousPeriod, Population, R0},
@@ -26,15 +25,8 @@ impl Component for TransmissionManager {
 }
 
 eosim::define_plugin!(TransmissionManagerPlugin, HashMap<PersonId, PlanId>, HashMap::new());
-pub struct TransmissionRandomId {}
 
-impl RandomId for TransmissionRandomId {
-    type RngType = Xoshiro256PlusPlus;
-
-    fn seed_offset() -> u64 {
-        fxhash::hash64("TransmissionRandomId")
-    }
-}
+eosim::define_random_id!(TransmissionRandomId);
 
 pub fn handle_person_disease_status_change(
     context: &mut Context,

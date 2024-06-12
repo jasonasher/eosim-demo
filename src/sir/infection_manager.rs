@@ -3,24 +3,15 @@ use eosim::{
     global_properties::GlobalPropertyContext,
     people::PersonId,
     person_properties::PersonPropertyContext,
-    random::{RandomContext, RandomId},
+    random::RandomContext,
 };
 use rand_distr::{Distribution, Exp};
-use rand_xoshiro::Xoshiro256PlusPlus;
 
 use super::{global_properties::InfectiousPeriod, person_properties::DiseaseStatus};
 
 pub struct InfectionManager {}
 
-pub struct InfectionRandomId {}
-
-impl RandomId for InfectionRandomId {
-    type RngType = Xoshiro256PlusPlus;
-
-    fn seed_offset() -> u64 {
-        fxhash::hash64("InfectionRandomId")
-    }
-}
+eosim::define_random_id!(InfectionRandomId);
 
 pub fn handle_person_disease_status_change(
     context: &mut Context,

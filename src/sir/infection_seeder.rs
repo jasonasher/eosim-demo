@@ -3,25 +3,17 @@ use eosim::{
     global_properties::GlobalPropertyContext,
     people::PersonId,
     person_properties::PersonPropertyContext,
-    random::{RandomContext, RandomId},
+    random::RandomContext,
 };
 use rand::seq::index::sample;
-use rand_xoshiro::Xoshiro256PlusPlus;
 
 use super::{
     global_properties::{InitialInfections, Population},
     person_properties::DiseaseStatus,
 };
 
-pub struct SeedingRandomId {}
+eosim::define_random_id!(SeedingRandomId);
 
-impl RandomId for SeedingRandomId {
-    type RngType = Xoshiro256PlusPlus;
-
-    fn seed_offset() -> u64 {
-        fxhash::hash64("SeedingRandomId")
-    }
-}
 pub struct InfectionSeeder {}
 
 impl Component for InfectionSeeder {

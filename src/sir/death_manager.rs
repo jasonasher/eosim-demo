@@ -3,10 +3,9 @@ use eosim::{
     global_properties::GlobalPropertyContext,
     people::PersonId,
     person_properties::PersonPropertyContext,
-    random::{RandomContext, RandomId},
+    random::RandomContext,
 };
 use rand::Rng;
-use rand_xoshiro::Xoshiro256PlusPlus;
 
 use super::{global_properties::DeathRate, person_properties::DiseaseStatus};
 
@@ -19,15 +18,7 @@ impl Component for DeathManager {
     }
 }
 
-pub struct DeathRandomId {}
-
-impl RandomId for DeathRandomId {
-    type RngType = Xoshiro256PlusPlus;
-
-    fn seed_offset() -> u64 {
-        fxhash::hash64("DeathRandomId")
-    }
-}
+eosim::define_random_id!(DeathRandomId);
 
 pub fn handle_person_disease_status_change(
     context: &mut Context,
