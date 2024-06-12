@@ -8,12 +8,13 @@ use eosim::{
     reports::{get_channel_report_handler, ReportsContext},
 };
 use eosim_demo::sir::{
-    global_properties::{InfectiousPeriod, InitialInfections, Population, R0},
+    global_properties::{InfectiousPeriod, InitialInfections, Population, R0, DeathRate},
     incidence_report::IncidenceReport,
     infection_manager::InfectionManager,
     infection_seeder::InfectionSeeder,
     population_loader::PopulationLoader,
     transmission_manager::TransmissionManager,
+    death_manager::DeathManager,
 };
 use serde_derive::{Deserialize, Serialize};
 use threadpool::ThreadPool;
@@ -38,6 +39,7 @@ struct Parameters {
     infectious_period: f64,
     initial_infections: usize,
     random_seed: u64,
+    death_rate: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -58,6 +60,7 @@ fn setup_context(context: &mut Context, parameters: &Parameters) {
     context.set_global_property_value::<R0>(parameters.r0);
     context.set_global_property_value::<InfectiousPeriod>(parameters.infectious_period);
     context.set_global_property_value::<InitialInfections>(parameters.initial_infections);
+    context.set_global_property_value::<DeathRate>(parameters.death_rate);
 
     // Set up RNG
     context.set_base_random_seed(parameters.random_seed);
@@ -70,6 +73,7 @@ fn setup_context(context: &mut Context, parameters: &Parameters) {
     context.add_component::<InfectionManager>();
     context.add_component::<TransmissionManager>();
     context.add_component::<InfectionSeeder>();
+    context.add_component::<DeathManager>();
 }
 
 fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {

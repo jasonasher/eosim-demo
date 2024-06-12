@@ -3,3 +3,4 @@ r0: 1.5
 infectious_period: 4.0
 initial_infections: 100
 random_seed: 8675309
+death_rate: 0.02
