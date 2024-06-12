@@ -15,6 +15,7 @@ use eosim_demo::sir::{
     population_loader::PopulationLoader,
     transmission_manager::TransmissionManager,
     death_manager::DeathManager,
+    death_report::DeathReport
 };
 use serde_derive::{Deserialize, Serialize};
 use threadpool::ThreadPool;
@@ -67,6 +68,7 @@ fn setup_context(context: &mut Context, parameters: &Parameters) {
 
     // Add reports
     context.add_component::<IncidenceReport>();
+    context.add_component::<DeathReport>();
 
     // Add model components
     context.add_component::<PopulationLoader>();
@@ -79,6 +81,8 @@ fn setup_context(context: &mut Context, parameters: &Parameters) {
 fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
     let output_file = File::create(output_path.join("incidence_report.csv"))
         .expect("Could not create output file.");
+    let death_file = File::create(output_path.join("death_report.csv"))
+        .expect("Could not create output file.");
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
         let mut writer_builder = csv::WriterBuilder::new();
         // Don't re-write the headers
@@ -90,10 +94,20 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
                 .try_clone()
                 .expect("Could not write to output file"),
         );
+        let mut death_writer = writer_builder.from_writer(
+            death_file
+                .try_clone()
+                .expect("Could not write to death report file"),
+        );
         // Set up and execute context
         let mut context = Context::new();
         context.set_report_item_handler::<IncidenceReport>(move |item| {
             if let Err(e) = writer.serialize((Scenario { scenario }, item)) {
+                eprintln!("{}", e);
+            }
+        });
+        context.set_report_item_handler::<DeathReport>(move |item| {
+            if let Err(e) = death_writer.serialize((Scenario { scenario }, item)) {
                 eprintln!("{}", e);
             }
         });
@@ -106,10 +120,16 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
 fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threads: u8) {
     let output_file = File::create(output_path.join("incidence_report.csv"))
         .expect("Could not create output file.");
+    let death_file = File::create(output_path.join("death_report.csv"))
+        .expect("Could not create death report file.");
+
     let pool = ThreadPool::new(threads.into());
     let (sender, receiver) = channel();
+    let (death_sender, death_receiver) = channel();
+
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
         let sender = sender.clone();
+        let death_sender = death_sender.clone();
         let parameters = *parameters;
         pool.execute(move || {
             // Set up and execute context
@@ -120,17 +140,29 @@ fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threa
             >(
                 sender, Scenario { scenario }
             ));
+            context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
+                DeathReport,
+                Scenario,
+            >(
+                death_sender, Scenario { scenario }
+            ));
             setup_context(&mut context, &parameters);
             context.execute();
             println!("Scenario {} completed", scenario);
         });
     }
     drop(sender);
+    drop(death_sender);
 
     // Write output from main thread
     let mut writer = csv::Writer::from_writer(output_file);
     for item in receiver.iter() {
         writer.serialize(item).unwrap();
+    }
+
+    let mut death_writer = csv::Writer::from_writer(death_file);
+    for item in death_receiver.iter() {
+        death_writer.serialize(item).unwrap();
     }
 }
 
