@@ -6,7 +6,6 @@ use eosim::{
     random::{RandomContext, RandomId},
 };
 use rand::Rng;
-use rand_distr::Exp;
 use rand_xoshiro::Xoshiro256PlusPlus;
 
 use super::{global_properties::DeathRate, person_properties::DiseaseStatus};
@@ -45,11 +44,9 @@ pub fn schedule_death_check(context: &mut Context, person_id: PersonId) {
     let death_rate = *context
         .get_global_property_value::<DeathRate>()
         .expect("Death Rate not specified");
-    let should_die: bool;
-    {
-        let mut rng = context.get_rng::<DeathRandomId>();
-        should_die = rng.gen::<f64>() < death_rate;
-    }
+    let mut rng = context.get_rng::<DeathRandomId>();
+    let should_die = rng.gen::<f64>() < death_rate;
+    drop(rng);
     if should_die {
         context.set_person_property_value::<DiseaseStatus>(person_id, DiseaseStatus::D);
     }
