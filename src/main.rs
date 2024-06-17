@@ -104,12 +104,12 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
         context.set_report_item_handler::<IncidenceReport>(move |item| {
             incidence_writer
         .serialize((Scenario { scenario }, item))
-        .unwrap_or_else(|e| panic!("{}", e));
+        .unwrap();
         }); 
         context.set_report_item_handler::<DeathReport>(move |item| {
             death_writer
         .serialize((Scenario { scenario }, item))
-        .unwrap_or_else(|e| panic!("{}", e));
+        .unwrap();
         });
         setup_context(&mut context, parameters);
         context.execute();

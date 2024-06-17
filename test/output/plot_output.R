@@ -1,26 +1,22 @@
 library(tidyverse)
 
-incidence_report <- read_csv("test/output/incidence_report.csv")
-death_report <- read_csv("test/output/death_report.csv")
-
-summarized_incidence_report <- incidence_report %>%
+plot_report <- function(df, variable) {
+  summarized <- df %>%
     group_by(scenario, day = floor(time)) %>%
-    summarize(incidence = n()) %>%
+    summarize(value = n()) %>%
     mutate(scenario = factor(scenario))
+  
+  plot <- ggplot(summarized) +
+    geom_line(aes(x = day, y = value, color = scenario)) +
+    ggtitle(paste(variable, "report"))
+  
+  output_file <- paste("test/output/", variable, "_report_plot.png", sep = "")
+  
+  ggsave(output_file, plot = plot)
+}
 
-summarized_death_report <- death_report %>%
-  group_by(scenario, day = floor(time)) %>%
-  summarize(death = n()) %>%
-  mutate(scenario = factor(scenario))
+death_report <- read_csv("test/output/death_report.csv")
+incidence_report <- read_csv("test/output/incidence_report.csv")
 
-death_plot <- ggplot(summarized_death_report) +
-  geom_line(aes(x = day, y = death, color = scenario)) +
-  ggtitle("Death Report")
-
-ggsave("test/output/death_report_plot.png", plot = death_plot)
-
-incidence_plot <- ggplot(summarized_incidence_report) +
-  geom_line(aes(x = day, y = incidence, color = scenario)) +
-  ggtitle("Incidence Report")
-
-ggsave("test/output/incidence_report_plot.png", plot = incidence_plot)
+plot_report(death_report, "death")
+plot_report(incidence_report, "incidence")
