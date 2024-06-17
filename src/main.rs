@@ -31,6 +31,14 @@ struct SirArgs {
     /// Number of threads
     #[arg(short, long, default_value_t = 1)]
     threads: u8,
+    /// Type of report
+    #[arg(short, long)]
+    report: String,
+}
+
+enum ReportType {
+    Incidence,
+    Death,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -53,6 +61,15 @@ struct Scenario {
 enum Config {
     Single(Parameters),
     Multiple(Vec<Parameters>),
+}
+
+impl SirArgs{
+    pub fn report_type(&self) -> Option<ReportType> {
+        match self.report.as_str(){
+            "incidence" => Some(ReportType::Incidence),
+            "death" => Some(ReportType::Death),
+        }
+    }
 }
 
 fn setup_context(context: &mut Context, parameters: &Parameters) {
@@ -83,34 +100,45 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
         .expect("Could not create output file.");
     let death_file = File::create(output_path.join("death_report.csv"))
         .expect("Could not create output file.");
+    let args = SirArgs::parse();
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
         let mut writer_builder = csv::WriterBuilder::new();
+        let mut context = Context::new();
         // Don't re-write the headers
         if scenario > 0 {
             writer_builder.has_headers(false);
         }
-        let mut incidence_writer = writer_builder.from_writer(
-            output_file
-                .try_clone()
-                .expect("Could not write to output file"),
-        );
-        let mut death_writer = writer_builder.from_writer(
-            death_file
-                .try_clone()
-                .expect("Could not write to death report file"),
-        );
+        if let Some(report_type) = args.report_type() {
+            match report_type {
+                ReportType::Incidence => {
+                    let mut incidence_writer = writer_builder.from_writer(
+                        output_file
+                            .try_clone()
+                            .expect("Could not write to output file"),
+                    );
+                    context.set_report_item_handler::<IncidenceReport>(move |item| {
+                        incidence_writer
+                    .serialize((Scenario { scenario }, item))
+                    .unwrap_or_else(|e| panic!("{}", e));
+                    }); 
+                }
+                ReportType::Death => {
+                    let mut death_writer = writer_builder.from_writer(
+                        death_file
+                            .try_clone()
+                            .expect("Could not write to death report file"),
+                    );
+                    context.set_report_item_handler::<DeathReport>(move |item| {
+                        death_writer
+                    .serialize((Scenario { scenario }, item))
+                    .unwrap_or_else(|e| panic!("{}", e));
+                    });
+                }
+            }
+        } else {
+            println!("Unknown report type specified.");
+        }
         // Set up and execute context
-        let mut context = Context::new();
-        context.set_report_item_handler::<IncidenceReport>(move |item| {
-            incidence_writer
-        .serialize((Scenario { scenario }, item))
-        .unwrap_or_else(|e| panic!("{}", e));
-        }); 
-        context.set_report_item_handler::<DeathReport>(move |item| {
-            death_writer
-        .serialize((Scenario { scenario }, item))
-        .unwrap_or_else(|e| panic!("{}", e));
-        });
         setup_context(&mut context, parameters);
         context.execute();
         println!("Scenario {} completed", scenario);
@@ -123,48 +151,54 @@ fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threa
     let death_file = File::create(output_path.join("death_report.csv"))
         .expect("Could not create death report file.");
 
+    let args = SirArgs::parse();
+
     let pool = ThreadPool::new(threads.into());
     let (sender, receiver) = channel();
-    let (death_sender, death_receiver) = channel();
 
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
-        let sender = sender.clone();
-        let death_sender = death_sender.clone();
         let parameters = *parameters;
         pool.execute(move || {
             // Set up and execute context
             let mut context = Context::new();
-            context.set_report_item_handler::<IncidenceReport>(get_channel_report_handler::<
-                IncidenceReport,
-                Scenario,
-            >(
-                sender, Scenario { scenario }
-            ));
-            context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
-                DeathReport,
-                Scenario,
-            >(
-                death_sender, Scenario { scenario }
-            ));
+            if let Some(report_type) = args.report_type() {
+                match report_type {
+                    ReportType::Incidence => {
+                        let sender = sender.clone();
+                        context.set_report_item_handler::<IncidenceReport>(get_channel_report_handler::<
+                            IncidenceReport,
+                            Scenario,
+                        >(
+                            sender, Scenario { scenario }
+                        ));
+                    }
+                    ReportType::Death => {
+                        let sender = sender.clone();
+                        context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
+                            DeathReport,
+                            Scenario,
+                        >(
+                            sender, Scenario { scenario }
+                        ));
+                    }
+                }
+            } else {
+                println!("Unknown report type specified.");
+            }
             setup_context(&mut context, &parameters);
             context.execute();
             println!("Scenario {} completed", scenario);
         });
     }
     drop(sender);
-    drop(death_sender);
 
     // Write output from main thread
-    let mut incidence_writer = csv::Writer::from_writer(output_file);
+    let mut writer = csv::Writer::from_writer(output_file);
     for item in receiver.iter() {
-        incidence_writer.serialize(item).unwrap();
-    }
-
-    let mut death_writer = csv::Writer::from_writer(death_file);
-    for item in death_receiver.iter() {
-        death_writer.serialize(item).unwrap();
+        writer.serialize(item).unwrap();
     }
 }
+
 
 fn main() {
     // Parse args and load parameters
