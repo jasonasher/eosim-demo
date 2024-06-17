@@ -89,7 +89,7 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
         if scenario > 0 {
             writer_builder.has_headers(false);
         }
-        let mut writer = writer_builder.from_writer(
+        let mut incidence_writer = writer_builder.from_writer(
             output_file
                 .try_clone()
                 .expect("Could not write to output file"),
@@ -102,7 +102,7 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
         // Set up and execute context
         let mut context = Context::new();
         context.set_report_item_handler::<IncidenceReport>(move |item| {
-            if let Err(e) = writer.serialize((Scenario { scenario }, item)) {
+            if let Err(e) = incidence_writer.serialize((Scenario { scenario }, item)) {
                 eprintln!("{}", e);
             }
         });
@@ -155,9 +155,9 @@ fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threa
     drop(death_sender);
 
     // Write output from main thread
-    let mut writer = csv::Writer::from_writer(output_file);
+    let mut incidence_writer = csv::Writer::from_writer(output_file);
     for item in receiver.iter() {
-        writer.serialize(item).unwrap();
+        incidence_writer.serialize(item).unwrap();
     }
 
     let mut death_writer = csv::Writer::from_writer(death_file);
