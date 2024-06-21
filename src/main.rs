@@ -5,7 +5,7 @@ use eosim::{
     context::Context,
     global_properties::GlobalPropertyContext,
     random::RandomContext,
-    reports::{get_channel_report_handler, ReportsContext},
+    reports::{get_channel_report_handler, ReportsContext, Report},
 };
 use eosim_demo::sir::{
     global_properties::{InfectiousPeriod, InitialInfections, Population, R0, DeathRate},
@@ -19,7 +19,8 @@ use eosim_demo::sir::{
 };
 use serde_derive::{Deserialize, Serialize};
 use threadpool::ThreadPool;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::oneshot;
 
 #[derive(Debug, Parser)]
 struct SirArgs {
@@ -79,11 +80,27 @@ fn setup_context(context: &mut Context, parameters: &Parameters) {
     context.add_component::<DeathManager>();
 }
 
-fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
+pub fn get_unbounded_channel_report_handler<T: Report, S>(
+    sender: UnboundedSender<(S, T::Item)>,
+    id: S,
+) -> impl FnMut(T::Item) + 'static
+where
+    T::Item: serde::Serialize + Send + 'static, // Use the serde::Serialize trait
+    S: serde::Serialize + Send + Copy + 'static, // Use the serde::Serialize trait
+{
+    move |item| {
+        if let Err(e) = sender.send((id, item)) {
+            panic!("Failed to send item: {:?}", e);
+        }
+    }
+}
+
+async fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
     let output_file = File::create(output_path.join("incidence_report.csv"))
         .expect("Could not create output file.");
     let death_file = File::create(output_path.join("death_report.csv"))
         .expect("Could not create output file.");
+
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
         let mut writer_builder = csv::WriterBuilder::new();
         // Don't re-write the headers
@@ -100,36 +117,71 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
                 .try_clone()
                 .expect("Could not write to death report file"),
         );
+
         // Set up and execute context
         let mut context = Context::new();
 
-        let (sender, receiver) = mpsc::channel::<(Scenario, Infection)>(100);
-        let (death_sender, death_receiver) = mpsc::channel::<(Scenario, Death)>(100);
+        let (sender, mut receiver) = mpsc::unbounded_channel::<(Scenario, Infection)>();
+        let (death_sender, mut death_receiver) = mpsc::unbounded_channel::<(Scenario, Death)>();
 
-        context.set_report_item_handler::<IncidenceReport>(get_channel_report_handler::<
+        context.set_report_item_handler::<IncidenceReport>(get_unbounded_channel_report_handler::<
             IncidenceReport,
             Scenario
-        >(sender, Scenario { scenario }));
+        >(sender.clone(), Scenario { scenario }));
 
-        context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
+        context.set_report_item_handler::<DeathReport>(get_unbounded_channel_report_handler::<
             DeathReport,
             Scenario
-        >(death_sender, Scenario { scenario }));
+        >(death_sender.clone(), Scenario { scenario }));
 
         setup_context(&mut context, parameters);
-        context.execute();
 
-        tokio::spawn(async move {
-            while let Some(item) = receiver.recv().await {
-                incidence_writer.serialize(item).unwrap();
-            }
+        println!("Executing context for scenario {}", scenario);
+
+        // Execute the context within the current thread
+        tokio::task::block_in_place(|| {
+            context.execute();
         });
 
-        tokio::spawn(async move {
-            while let Some(item) = death_receiver.recv().await {
-                death_writer.serialize(item).unwrap();
+        drop(sender);
+        drop(death_sender);
+        
+        let mut incidence_done = false;
+        let mut death_done = false;
+
+        while !incidence_done || !death_done {
+            tokio::select! {
+                recv_result = receiver.recv(), if !incidence_done => {
+                    match recv_result {
+                        Some(item) => {
+                            println!("Received incidence report item for scenario {}", scenario); // Debugging statement
+                            incidence_writer.serialize(item).unwrap();
+                        }
+                        None => {
+                            println!("No more incidence report items for scenario {}", scenario);
+                            incidence_done = true;
+                        }
+                    }
+                },
+                recv_result = death_receiver.recv(), if !death_done => {
+                    match recv_result {
+                        Some(item) => {
+                            println!("Received death report item for scenario {}", scenario); // Debugging statement
+                            death_writer.serialize(item).unwrap();
+                        }
+                        None => {
+                            println!("No more death report items for scenario {}", scenario);
+                            death_done = true;
+                        }
+                    }
+                },
+                else => {
+                    if incidence_done && death_done {
+                        break;
+                    }
+                }
             }
-        });
+        }
 
         println!("Scenario {} completed", scenario);
     }
@@ -142,8 +194,8 @@ async fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path,
         .expect("Could not create death report file.");
 
     let pool = ThreadPool::new(threads.into());
-    let (sender, mut receiver) = mpsc::channel::<(Scenario, Infection)>(100);
-    let (death_sender, mut death_receiver) = mpsc::channel::<(Scenario, Death)>(100);
+    let (sender, mut receiver) = mpsc::unbounded_channel::<(Scenario, Infection)>();
+    let (death_sender, mut death_receiver) = mpsc::unbounded_channel::<(Scenario, Death)>();
 
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
         let sender = sender.clone();
@@ -152,13 +204,13 @@ async fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path,
         pool.execute(move || {
             // Set up and execute context
             let mut context = Context::new();
-            context.set_report_item_handler::<IncidenceReport>(get_channel_report_handler::<
+            context.set_report_item_handler::<IncidenceReport>(get_unbounded_channel_report_handler::<
                 IncidenceReport,
                 Scenario
             >(
                 sender, Scenario { scenario }
             ));            
-            context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
+            context.set_report_item_handler::<DeathReport>(get_unbounded_channel_report_handler::<
                 DeathReport,
                 Scenario
             >(
@@ -198,10 +250,12 @@ async fn main() {
     let output_path = Path::new(&args.output);
 
     match config {
-        Config::Single(parameters) => run_single_threaded(vec![parameters], output_path),
+        Config::Single(parameters) => {
+            run_single_threaded(vec![parameters], output_path).await;
+        }
         Config::Multiple(parameters_vec) => {
             if args.threads <= 1 {
-                run_single_threaded(parameters_vec, output_path)
+                run_single_threaded(parameters_vec, output_path).await;
             } else {
                 run_multi_threaded(parameters_vec, output_path, args.threads).await;
             }
