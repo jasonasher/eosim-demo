@@ -1,4 +1,4 @@
-use std::{fs::File, path::Path, sync::mpsc::channel};
+use std::{fs::File, path::Path};
 
 use clap::Parser;
 use eosim::{
@@ -9,16 +9,17 @@ use eosim::{
 };
 use eosim_demo::sir::{
     global_properties::{InfectiousPeriod, InitialInfections, Population, R0, DeathRate},
-    incidence_report::IncidenceReport,
+    incidence_report::{IncidenceReport, Infection},
     infection_manager::InfectionManager,
     infection_seeder::InfectionSeeder,
     population_loader::PopulationLoader,
     transmission_manager::TransmissionManager,
     death_manager::DeathManager,
-    death_report::DeathReport
+    death_report::{DeathReport, Death}
 };
 use serde_derive::{Deserialize, Serialize};
 use threadpool::ThreadPool;
+use tokio::sync::mpsc::{self, Sender};
 
 #[derive(Debug, Parser)]
 struct SirArgs {
@@ -101,31 +102,48 @@ fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
         );
         // Set up and execute context
         let mut context = Context::new();
-        context.set_report_item_handler::<IncidenceReport>(move |item| {
-            incidence_writer
-        .serialize((Scenario { scenario }, item))
-        .unwrap();
-        }); 
-        context.set_report_item_handler::<DeathReport>(move |item| {
-            death_writer
-        .serialize((Scenario { scenario }, item))
-        .unwrap();
-        });
+
+        let (sender, receiver) = mpsc::channel::<(Scenario, Infection)>(100);
+        let (death_sender, death_receiver) = mpsc::channel::<(Scenario, Death)>(100);
+
+        context.set_report_item_handler::<IncidenceReport>(get_channel_report_handler::<
+            IncidenceReport,
+            Scenario
+        >(sender, Scenario { scenario }));
+
+        context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
+            DeathReport,
+            Scenario
+        >(death_sender, Scenario { scenario }));
+
         setup_context(&mut context, parameters);
         context.execute();
+
+        tokio::spawn(async move {
+            while let Some(item) = receiver.recv().await {
+                incidence_writer.serialize(item).unwrap();
+            }
+        });
+
+        tokio::spawn(async move {
+            while let Some(item) = death_receiver.recv().await {
+                death_writer.serialize(item).unwrap();
+            }
+        });
+
         println!("Scenario {} completed", scenario);
     }
 }
 
-fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threads: u8) {
+async fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threads: u8) {
     let output_file = File::create(output_path.join("incidence_report.csv"))
         .expect("Could not create output file.");
     let death_file = File::create(output_path.join("death_report.csv"))
         .expect("Could not create death report file.");
 
     let pool = ThreadPool::new(threads.into());
-    let (sender, receiver) = channel();
-    let (death_sender, death_receiver) = channel();
+    let (sender, mut receiver) = mpsc::channel::<(Scenario, Infection)>(100);
+    let (death_sender, mut death_receiver) = mpsc::channel::<(Scenario, Death)>(100);
 
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
         let sender = sender.clone();
@@ -136,16 +154,16 @@ fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threa
             let mut context = Context::new();
             context.set_report_item_handler::<IncidenceReport>(get_channel_report_handler::<
                 IncidenceReport,
-                Scenario,
+                Scenario
             >(
                 sender, Scenario { scenario }
-            ));
+            ));            
             context.set_report_item_handler::<DeathReport>(get_channel_report_handler::<
                 DeathReport,
-                Scenario,
+                Scenario
             >(
                 death_sender, Scenario { scenario }
-            ));
+            ));            
             setup_context(&mut context, &parameters);
             context.execute();
             println!("Scenario {} completed", scenario);
@@ -154,19 +172,24 @@ fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path, threa
     drop(sender);
     drop(death_sender);
 
-    // Write output from main thread
+    // Write output from main thread 
     let mut incidence_writer = csv::Writer::from_writer(output_file);
-    for item in receiver.iter() {
-        incidence_writer.serialize(item).unwrap();
-    }
-
     let mut death_writer = csv::Writer::from_writer(death_file);
-    for item in death_receiver.iter() {
-        death_writer.serialize(item).unwrap();
+    loop {
+        tokio::select! {
+            Some(item) = receiver.recv() =>{
+                incidence_writer.serialize(item).unwrap();
+            },
+            Some(item) = death_receiver.recv() =>{
+                death_writer.serialize(item).unwrap();
+            },
+            else => break,
+        }
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Parse args and load parameters
     let args = SirArgs::parse();
     let config_file = File::open(&args.input)
@@ -180,7 +203,7 @@ fn main() {
             if args.threads <= 1 {
                 run_single_threaded(parameters_vec, output_path)
             } else {
-                run_multi_threaded(parameters_vec, output_path, args.threads)
+                run_multi_threaded(parameters_vec, output_path, args.threads).await;
             }
         }
     }
