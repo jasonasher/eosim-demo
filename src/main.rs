@@ -89,13 +89,10 @@ where
     S: serde::Serialize + Send + Copy + 'static, 
 {
     move |item| {
-        let sender = sender.clone();
-        let id = id;
-        tokio::spawn(async move {
-            if let Err(e) = sender.send((id, item)).await {
-                panic!("Failed to send item: {:?}", e);
-            }
-        });
+        // Use try_send because we need a non-blocking approach
+        if let Err(e) = sender.try_send((id, item)) {
+            panic!("Failed to send item: {:?}", e);
+        }
     }
 }
 
@@ -133,8 +130,8 @@ async fn run_multi_threaded(parameters_vec: Vec<Parameters>, output_path: &Path,
         .expect("Could not create death report file.");
 
     let pool = ThreadPool::new(threads.into());
-    let (sender, mut receiver) = mpsc::channel::<(Scenario, Infection)>(100);
-    let (death_sender, mut death_receiver) = mpsc::channel::<(Scenario, Death)>(100);
+    let (sender, mut receiver) = mpsc::channel::<(Scenario, Infection)>(100000);
+    let (death_sender, mut death_receiver) = mpsc::channel::<(Scenario, Death)>(100000);
 
     let handle = Handle::current();
 
