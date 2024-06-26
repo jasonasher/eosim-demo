@@ -89,12 +89,11 @@ where
     S: serde::Serialize + Send + Copy + 'static, 
 {
     move |item| {
-        tokio::spawn({
-            let sender = sender.clone(); 
-            async move {
-                if let Err(e) = sender.send((id, item)).await {
-                    panic!("Due to receiver being closed, failed to send item: {:?}", e);
-                }
+        let sender = sender.clone(); 
+        let id = id;
+        futures::executor::block_on(async move {
+            if let Err(e) = sender.send((id, item)).await {
+                panic!("Due to receiver being closed, failed to send item: {:?}", e);
             }
         });
     }
@@ -204,5 +203,86 @@ async fn main() {
                 run_multi_threaded(parameters_vec, output_path, args.threads).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+    use tokio::time::{sleep, Duration};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use futures::executor::block_on;
+
+    #[tokio::test]
+    async fn test_backpressure_on_channel() {
+        println!("Test started");
+
+        let (sender, mut receiver) = mpsc::channel::<(u32, i32)>(2); // Create buffer
+        println!("Channel created"); 
+
+        let mut handler = get_bounded_channel_report_handler::<DummyReport, u32>(sender, 42); // Create buffer
+        println!("Handler created"); 
+
+        let stop_flag = Arc::new(Mutex::new(false)); // Flag determines whether the consumer should block
+        let stop_flag_clone = stop_flag.clone();
+
+        // Create a consumer that will temporarily block
+        let consumer = tokio::spawn(async move {
+            println!("Consumer started"); 
+            while let Some((_id, item)) = receiver.recv().await { // Wait to receive messages from channel
+                println!("Received: {}", item);
+                let flag = stop_flag_clone.lock().await; 
+                if *flag { // If stop_flag is true, consumer should simulate delay by sleeping for one second
+                    println!("Consumer blocking");
+                    sleep(Duration::from_secs(1)).await; // Simulate a delay
+                }
+            }
+            println!("Consumer done");
+        });
+
+        // Fill the channel
+        handler(1);
+        println!("Handler 1 sent");
+        handler(2);
+        println!("Handler 2 sent");
+        println!("Channel filled");
+
+        // The channel should now be full, and the next send should block
+        let producer = tokio::spawn(async move {
+            handler(3); // This should block until the consumer drains the channel
+            println!("Handler 3 sent");
+            handler(4);
+            println!("Handler 4 sent");
+        });
+
+        // Now, let the producer block for a while
+        sleep(Duration::from_millis(500)).await;
+
+        // Check that the producer has not been able to send the third message yet
+        {
+            let mut flag = stop_flag.lock().await;
+            assert!(*flag == false, "Producer should be blocked, but it is not");
+            println!("Producer is blocked as expected");
+        }
+
+        // Allow the consumer to drain the channel
+        {
+            let mut flag = stop_flag.lock().await;
+            *flag = true;
+        }
+
+        // Wait for the tasks to complete
+        consumer.await.unwrap();
+        producer.await.unwrap();
+        println!("Test completed");
+    }
+
+    #[derive(Serialize)]
+    struct DummyReport;
+
+    impl Report for DummyReport {
+        type Item = i32;
     }
 }

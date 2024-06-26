@@ -12,8 +12,9 @@ eosim = { git = "https://github.com/jasonasher/eosim.git", version = "0.1.0" }
 fxhash = "0.2.1"
 rand = "0.8.5"
 rand_distr = "0.4.3"
-serde = "1.0.201"
+serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0.201"
 serde_yaml = "0.9.34"
 threadpool = "1.8.1"
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
