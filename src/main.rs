@@ -89,10 +89,14 @@ where
     S: serde::Serialize + Send + Copy + 'static, 
 {
     move |item| {
-        // Use try_send because we need a non-blocking approach
-        if let Err(e) = sender.try_send((id, item)) {
-            panic!("Failed to send item: {:?}", e);
-        }
+        tokio::spawn({
+            let sender = sender.clone(); 
+            async move {
+                if let Err(e) = sender.send((id, item)).await {
+                    panic!("Due to receiver being closed, failed to send item: {:?}", e);
+                }
+            }
+        });
     }
 }
 
