@@ -230,7 +230,6 @@ mod tests {
     use tokio::time::{sleep, Duration};
     use std::sync::Arc;
     use tokio::sync::Mutex;
-    use futures::executor::block_on;
 
     #[tokio::test]
     async fn test_backpressure_on_channel() {
@@ -279,7 +278,7 @@ mod tests {
 
         // Check that the producer has not been able to send the third message yet
         {
-            let mut flag = stop_flag.lock().await;
+            let flag = stop_flag.lock().await;
             assert!(*flag == false, "Producer should be blocked, but it is not");
             println!("Producer is blocked as expected");
         }
