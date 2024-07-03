@@ -5,7 +5,7 @@ use eosim::{
     context::Context,
     global_properties::GlobalPropertyContext,
     random::RandomContext,
-    reports::{get_channel_report_handler, ReportsContext, Report},
+    reports::{ReportsContext, Report},
 };
 use eosim_demo::sir::{
     global_properties::{InfectiousPeriod, InitialInfections, Population, R0, DeathRate},
@@ -80,6 +80,7 @@ fn setup_context(context: &mut Context, parameters: &Parameters) {
     context.add_component::<DeathManager>();
 }
 
+// Merge this function into eosim
 pub fn get_bounded_channel_report_handler<T: Report, S>(
     sender: Sender<(S, T::Item)>,
     id: S,
@@ -102,21 +103,37 @@ where
 fn run_single_threaded(parameters_vec: Vec<Parameters>, output_path: &Path) {
     let output_file = File::create(output_path.join("incidence_report.csv"))
         .expect("Could not create output file.");
+    let death_file = File::create(output_path.join("death_report.csv"))
+        .expect("Could not create death report file.");
     for (scenario, parameters) in parameters_vec.iter().enumerate() {
-        let mut writer_builder = csv::WriterBuilder::new();
+        let mut incidence_writer_builder = csv::WriterBuilder::new();
+        let mut death_writer_builder = csv::WriterBuilder::new();
         // Don't re-write the headers
         if scenario > 0 {
-            writer_builder.has_headers(false);
+            incidence_writer_builder.has_headers(false);
+            death_writer_builder.has_headers(false);
         }
-        let mut writer = writer_builder.from_writer(
+        let mut incidence_writer = incidence_writer_builder.from_writer(
             output_file
                 .try_clone()
-                .expect("Could not write to output file"),
+                .expect("Could not write to incidence report file"),
+        );
+
+        let mut death_writer = death_writer_builder.from_writer(
+            death_file
+                .try_clone()
+                .expect("Could not write to death report file"),
         );
         // Set up and execute context
         let mut context = Context::new();
         context.set_report_item_handler::<IncidenceReport>(move |item| {
-            if let Err(e) = writer.serialize((Scenario { scenario }, item)) {
+            if let Err(e) = incidence_writer.serialize((Scenario { scenario }, item)) {
+                eprintln!("{}", e);
+            }
+        });
+
+        context.set_report_item_handler::<DeathReport>(move |item| {
+            if let Err(e) = death_writer.serialize((Scenario { scenario }, item)) {
                 eprintln!("{}", e);
             }
         });
